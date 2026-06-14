@@ -1,0 +1,12 @@
+
+scanLevel()
+
+
+for i in range(8):
+    spawn(1, i*30, i*30)
+
+
+move(1, 0, 50, 0.5)
+
+
+print("GeoFlow Script Executed Successfully!")
