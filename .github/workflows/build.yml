@@ -2,7 +2,7 @@ name: Build Geode Mod
 
 on:
   repository_dispatch:
-    types: [trigger-build] # This allows your website to trigger the build via API
+    types: [trigger-build] 
 
 jobs:
   build:
