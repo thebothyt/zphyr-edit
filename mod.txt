@@ -2,11 +2,6 @@
 scanLevel()
 
 
-for i in range(8):
-    spawn(1, i*30, i*30)
+Object(id='block', x=100, y=100, scale=2.5)
 
-
-move(1, 0, 50, 0.5)
-
-
-print("GeoFlow Script Executed Successfully!")
+print("Script Finished!")
