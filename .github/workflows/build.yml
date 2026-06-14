@@ -2,7 +2,8 @@ name: zyphr edit
 
 on:
   repository_dispatch:
-    types: [trigger-build] 
+    types: [trigger-build]
+  workflow_dispatch:
 
 jobs:
   build:
@@ -19,6 +20,134 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+
+    - name: Run Complete GeoFlow Transpiler
+      run: |
+        cat << 'EOF' > transpile.py
+        import re
+        import os
+
+        # Mapping dictionary matching GD object IDs
+        ID_MAP = {
+            "'spike'": "8",
+            "'block'": "1",
+            "'3d_block'": "2",
+            "'move_trigger'": "901",
+            "'alpha_trigger'": "1007"
+        }
+
+        if not os.path.exists("mod.txt"):
+            with open("mod.txt", "w") as f:
+                f.write("print(\"No mod.txt found!\")")
+
+        with open("mod.txt", "r") as f:
+            lines = f.readlines()
+
+        cpp_lines = []
+        in_loop = False
+
+        for line in lines:
+            clean_line = line.strip()
+            if not clean_line or clean_line.startswith("#"):
+                continue
+
+            if clean_line.startswith("for ") and "range(" in clean_line:
+                match = re.search(r'for \w+ in range\((\d+)\):', clean_line)
+                if match:
+                    count = match.group(1)
+                    cpp_lines.append(f"for (int i = 0; i < {count}; i++) {{")
+                    in_loop = True
+                continue
+
+            # NeditGD Style: Object(id='spike', x=15, y=15, groups=[42], scale=2)
+            if "Object(" in clean_line:
+                # Extract arguments inside Object(...)
+                args_match = re.search(r'Object\((.*)\)', clean_line)
+                if args_match:
+                    args_str = args_match.group(1)
+                    
+                    # Parse named arguments
+                    obj_id = "1"
+                    x_val = "0"
+                    y_val = "0"
+                    scale_val = "1.0f"
+                    group_val = "0"
+
+                    for arg in args_str.split(','):
+                        if '=' in arg:
+                            key, val = arg.split('=')
+                            key = key.strip()
+                            val = val.strip()
+
+                            if key == "id":
+                                obj_id = ID_MAP.get(val, "1")
+                            elif key == "x":
+                                x_val = val.replace("i*", "i * ")
+                            elif key == "y":
+                                y_val = val.replace("i*", "i * ")
+                            elif key == "scale":
+                                scale_val = f"{val}f"
+                            elif key == "groups":
+                                # Handle single group or first item in brackets e.g. [42]
+                                group_val = val.replace('[', '').replace(']', '')
+
+                    # Generate equivalent Geode C++ positioning logic
+                    cpp_lines.append(f"if (auto layer = LevelEditorLayer::get()) {{")
+                    cpp_lines.append(f"    auto obj = layer->createObject({obj_id}, {{ float({x_val}), float({y_val}) }}, true);")
+                    if group_val != "0" and group_val != "":
+                        cpp_lines.append(f"    if(obj) {{ obj->m_targetGroupID = {group_val}; }}")
+                    if scale_val != "1.0ff":
+                        cpp_lines.append(f"    if(obj) {{ obj->setScale({scale_val}); }}")
+                    cpp_lines.append(f"}}")
+
+            elif "print(" in clean_line:
+                match = re.search(r'print\((.*)\)', clean_line)
+                if match:
+                    msg = match.group(1)
+                    cpp_lines.append(f'FLAlertLayer::create("GeoFlow", {msg}, "OK")->show();')
+
+            elif "scanLevel()" in clean_line:
+                cpp_lines.append("if (auto layer = LevelEditorLayer::get()) {")
+                cpp_lines.append("    int total = layer->m_objects->count();")
+                cpp_lines.append("    std::string msg = \"Level contains \" + std::to_string(total) + \" objects!\";")
+                cpp_lines.append("    FLAlertLayer::create(\"Scan Complete\", msg.c_str(), \"OK\")->show();")
+                cpp_lines.append("}")
+
+        if in_loop:
+            cpp_lines.append("}")
+
+        body_code = "\n        ".join(cpp_lines)
+
+        cpp_template = f"""#include <Geode/Geode.hpp>
+        #include <Geode/modify/EditorUI.hpp>
+        #include <Geode/modify/LevelEditorLayer.hpp>
+        using namespace geode::prelude;
+
+        class $modify(MyEditorUI, EditorUI) {{
+            bool init(LevelEditorLayer* editor) {{
+                if (!EditorUI::init(editor)) return false;
+                auto menu = this->getChildByID("edit-menu");
+                if (menu) {{
+                    auto btnSprite = ButtonSprite::create("RUN");
+                    auto btn = CCMenuItemSpriteExtra::create(
+                        btnSprite, this, menu_selector(MyEditorUI::onRunGeoFlow)
+                    );
+                    menu->addChild(btn);
+                    menu->updateLayout();
+                }}
+                return true;
+            }}
+            void onRunGeoFlow(CCObject*) {{
+                {body_code}
+            }}
+        }};
+        """
+
+        os.makedirs("src", exist_ok=True)
+        with open("src/main.cpp", "w") as f:
+            f.write(cpp_template)
+        EOF
+        python3 transpile.py
 
     - name: Build the mod
       uses: geode-sdk/build-geode-mod@main
