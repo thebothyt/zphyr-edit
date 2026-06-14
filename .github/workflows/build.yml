@@ -1,4 +1,4 @@
-name: Build Geode Mod
+name: zyphr edit
 
 on:
   repository_dispatch:
