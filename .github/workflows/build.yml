@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     strategy:
-      fail-fast: false # This keeps the build going even if one part fails
+      fail-fast: false
       matrix:
         config:
           - name: Android64
@@ -46,7 +46,6 @@ jobs:
             if not clean_line or clean_line.startswith("#"):
                 continue
 
-            # Handle Object() calls
             if "Object(" in clean_line:
                 args_match = re.search(r'Object\((.*)\)', clean_line)
                 if args_match:
@@ -66,14 +65,12 @@ jobs:
                     cpp_lines.append(f"    if(obj) obj->setScale({scale_val});")
                     cpp_lines.append(f"}}")
 
-            # Handle scanLevel()
             elif "scanLevel()" in clean_line:
                 cpp_lines.append("if (auto layer = LevelEditorLayer::get()) {")
                 cpp_lines.append("    int total = layer->m_objects->count();")
                 cpp_lines.append("    FLAlertLayer::create(\"Scan\", (\"Objects: \" + std::to_string(total)).c_str(), \"OK\")->show();")
                 cpp_lines.append("}")
 
-            # Handle print()
             elif "print(" in clean_line:
                 match = re.search(r'print\((.*)\)', clean_line)
                 if match:
@@ -113,6 +110,7 @@ jobs:
       uses: geode-sdk/build-geode-mod@main
       with:
         target: ${{ matrix.config.target }}
+        geode: v3.0.0-beta.1
 
     - name: Upload Artifact
       uses: actions/upload-artifact@v4
